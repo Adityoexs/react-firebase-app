@@ -5,9 +5,11 @@ import { logout } from '../../firebase/auth'
 
 /**
  * Top navigation bar shown on every page.
- * Displays the app name and auth-aware action buttons.
+ * Displays the app name, auth-aware action buttons, and notification permission status.
+ *
+ * @param {string} notificationPermission - 'granted' | 'denied' | 'default'
  */
-function Navbar() {
+function Navbar({ notificationPermission = 'default' }) {
   const { currentUser } = useAuth()
   const navigate = useNavigate()
 
@@ -21,6 +23,17 @@ function Navbar() {
     }
   }
 
+  const bellIcon =
+    notificationPermission === 'granted' ? (
+      <span title="Push notifications enabled" className="text-lg select-none">
+        🔔
+      </span>
+    ) : (
+      <span title="Push notifications not enabled" className="text-lg select-none opacity-60">
+        🔕
+      </span>
+    )
+
   return (
     <nav className="bg-indigo-600 text-white shadow-md">
       <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -33,6 +46,9 @@ function Navbar() {
         <div className="flex items-center gap-4">
           {currentUser ? (
             <>
+              {/* Notification permission bell indicator */}
+              {bellIcon}
+
               <span className="text-sm hidden sm:block truncate max-w-xs">
                 {currentUser.email}
               </span>
