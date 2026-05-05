@@ -42,7 +42,7 @@ src/
 ├── hooks/
 │   ├── useAuth.js             # Convenience hook — exposes currentUser & loading
 │   ├── useTasks.js            # Real-time task subscription hook
-│   └── usePushNotifications.js # FCM permission + foreground message listener
+│   └── usePushNotifications.jsx # FCM permission + foreground message listener
 ├── pages/
 │   ├── HomePage.jsx           # Public landing page
 │   ├── LoginPage.jsx          # /login

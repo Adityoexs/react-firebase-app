@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import useAuth from './useAuth'
 import { requestNotificationPermission, subscribeToForegroundMessages } from '../firebase/messaging'
@@ -42,6 +42,9 @@ const usePushNotifications = () => {
   useEffect(() => {
     if (!currentUser) return
 
+    // Use a cancelled flag to handle the race condition where the effect cleanup
+    // runs before the async subscription promise resolves.
+    let cancelled = false
     let unsubscribe = () => {}
 
     const handleMessage = (payload) => {
@@ -82,10 +85,16 @@ const usePushNotifications = () => {
     }
 
     subscribeToForegroundMessages(handleMessage).then((unsub) => {
-      unsubscribe = unsub
+      if (cancelled) {
+        // Effect already cleaned up — immediately unsubscribe the newly created listener
+        unsub()
+      } else {
+        unsubscribe = unsub
+      }
     })
 
     return () => {
+      cancelled = true
       unsubscribe()
     }
   }, [currentUser])
