@@ -68,18 +68,16 @@ export const requestNotificationPermission = async (userId) => {
 }
 
 /**
- * Listen for foreground messages (app is open/focused).
- * Returns a promise that resolves with the next message payload.
+ * Subscribe to foreground messages (app is open/focused).
+ * Sets up a single persistent listener and returns an unsubscribe function
+ * for proper cleanup.
  *
- * @returns {Promise<object>} Message payload
+ * @param {function} callback - Receives the FCM message payload
+ * @returns {Promise<function>} Unsubscribe function
  */
-export const onMessageListener = async () => {
+export const subscribeToForegroundMessages = async (callback) => {
   const messaging = await getFirebaseMessaging()
-  if (!messaging) return null
-
-  return new Promise((resolve) => {
-    onMessage(messaging, (payload) => {
-      resolve(payload)
-    })
-  })
+  if (!messaging) return () => {}
+  // onMessage returns an unsubscribe function
+  return onMessage(messaging, callback)
 }
