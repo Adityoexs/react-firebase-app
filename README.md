@@ -12,6 +12,7 @@ A fully-featured task manager built with **React + Vite**, **Firebase (v9+ modul
 | 📦 **Firestore CRUD** | Create, Read, Update, Delete tasks — scoped per user |
 | ⚡ **Real-time Updates** | `onSnapshot` listener — changes appear instantly without refresh |
 | 🔔 **Toast Notifications** | `react-hot-toast` for auth & CRUD feedback |
+| 📲 **Push Notifications** | Firebase Cloud Messaging (FCM) for foreground & background push |
 | 🎨 **Tailwind CSS** | Utility-first styling throughout |
 
 ---
@@ -30,23 +31,27 @@ src/
 │   │   ├── TaskItem.jsx       # Single task with inline edit & delete
 │   │   └── TaskForm.jsx       # Create / edit task form
 │   └── UI/
-│       └── Navbar.jsx         # Global navigation bar
+│       └── Navbar.jsx         # Global navigation bar (bell icon for notification status)
 ├── context/
 │   └── AuthContext.jsx        # Firebase auth state via React Context API
 ├── firebase/
-│   ├── config.js              # Firebase app initialisation
+│   ├── config.js              # Firebase app initialisation (Auth, Firestore, Messaging)
 │   ├── auth.js                # Auth helpers (register, login, Google, logout)
-│   └── firestore.js           # Firestore CRUD & real-time helpers
+│   ├── firestore.js           # Firestore CRUD & real-time helpers
+│   └── messaging.js           # FCM helpers (requestPermission, onMessageListener)
 ├── hooks/
 │   ├── useAuth.js             # Convenience hook — exposes currentUser & loading
-│   └── useTasks.js            # Real-time task subscription hook
+│   ├── useTasks.js            # Real-time task subscription hook
+│   └── usePushNotifications.jsx # FCM permission + foreground message listener
 ├── pages/
 │   ├── HomePage.jsx           # Public landing page
 │   ├── LoginPage.jsx          # /login
 │   ├── RegisterPage.jsx       # /register
 │   └── DashboardPage.jsx      # /dashboard (protected)
-├── App.jsx                    # Router + AuthProvider + Toaster
+├── App.jsx                    # Router + AuthProvider + Toaster + usePushNotifications
 └── main.jsx                   # React entry point
+public/
+└── firebase-messaging-sw.js   # Service worker for background FCM notifications
 ```
 
 ---
@@ -72,7 +77,8 @@ Create a Firebase project at <https://console.firebase.google.com/> then:
 
 1. Enable **Authentication** → Email/Password & Google providers
 2. Create a **Firestore** database (start in test mode while developing)
-3. Copy your project's web app config
+3. Enable **Cloud Messaging** in the Firebase Console
+4. Copy your project's web app config
 
 Copy the example env file and fill in your credentials:
 
@@ -89,6 +95,7 @@ VITE_FIREBASE_PROJECT_ID=your_project_id
 VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
 VITE_FIREBASE_APP_ID=1:123456789:web:abcdef
+VITE_FIREBASE_VAPID_KEY=your_vapid_key
 ```
 
 ### 4. Run the development server
@@ -108,6 +115,71 @@ npm run preview   # preview the production build locally
 
 ---
 
+## 🔔 Firebase Cloud Messaging (FCM) Setup
+
+### Getting the VAPID Key
+
+1. Open the [Firebase Console](https://console.firebase.google.com/)
+2. Select your project → **Project Settings** (gear icon)
+3. Go to the **Cloud Messaging** tab
+4. Under **Web Push certificates**, click **Generate key pair** (if you don't have one)
+5. Copy the **Key pair** value — this is your VAPID key
+6. Paste it as `VITE_FIREBASE_VAPID_KEY` in your `.env` file
+
+### Updating the Service Worker Config
+
+The service worker (`public/firebase-messaging-sw.js`) uses a hardcoded Firebase config for background notifications. You must update it with your real Firebase project values:
+
+```js
+// public/firebase-messaging-sw.js
+firebase.initializeApp({
+  apiKey: 'YOUR_ACTUAL_API_KEY',
+  authDomain: 'YOUR_PROJECT.firebaseapp.com',
+  projectId: 'YOUR_PROJECT_ID',
+  storageBucket: 'YOUR_PROJECT.appspot.com',
+  messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
+  appId: 'YOUR_APP_ID',
+})
+```
+
+> ⚠️ The service worker cannot access Vite environment variables — the config must be hardcoded or fetched at runtime.
+
+### Sending a Test Push Notification
+
+**From Firebase Console:**
+
+1. Go to **Engage** → **Messaging** in the Firebase Console
+2. Click **New campaign** → **Firebase Notification messages**
+3. Fill in a **Notification title** and **text**
+4. Under **Target**, select your app and target all users (or a specific FCM token)
+5. Click **Review** → **Publish**
+
+**Via FCM HTTP API (curl):**
+
+```bash
+curl -X POST https://fcm.googleapis.com/fcm/send \
+  -H "Authorization: key=YOUR_SERVER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "DEVICE_FCM_TOKEN",
+    "notification": {
+      "title": "Hello!",
+      "body": "This is a test push notification."
+    }
+  }'
+```
+
+Replace `YOUR_SERVER_KEY` with your Firebase Cloud Messaging Server key (found in Project Settings → Cloud Messaging) and `DEVICE_FCM_TOKEN` with the token logged/saved when a user grants permission.
+
+### How It Works
+
+| Scenario | Handler |
+|---|---|
+| App is **open** (foreground) | `onMessage` in `src/firebase/messaging.js` → toast popup via `usePushNotifications` |
+| App is **backgrounded or closed** | `public/firebase-messaging-sw.js` → `onBackgroundMessage` → system notification |
+
+---
+
 ## 🔐 Firestore Security Rules (recommended)
 
 After development, lock down your Firestore database so users can only access their own data:
@@ -119,6 +191,9 @@ service cloud.firestore {
     match /tasks/{taskId} {
       allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
       allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+    }
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
   }
 }
@@ -147,6 +222,7 @@ service cloud.firestore {
 | `VITE_FIREBASE_STORAGE_BUCKET` | Storage bucket |
 | `VITE_FIREBASE_MESSAGING_SENDER_ID` | Cloud Messaging sender ID |
 | `VITE_FIREBASE_APP_ID` | Firebase App ID |
+| `VITE_FIREBASE_VAPID_KEY` | FCM Web Push VAPID key (from Firebase Console → Cloud Messaging) |
 
 > ⚠️ Never commit your `.env` file. It is already listed in `.gitignore`.
 
